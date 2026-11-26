@@ -65,7 +65,20 @@ final class ProcessBinary implements Binary {
             $process->kill();
             $exit = null;
         }
-        return new Result($exit, $out->await(), $err->await());
+        return new Result($exit, self::settled($out), self::settled($err));
+    }
+
+    /**
+     * What a stream held; a stream a killed child's helper keeps open is not waited for.
+     *
+     * @param Future<string> $stream
+     */
+    private static function settled(Future $stream): string {
+        try {
+            return $stream->await(new TimeoutCancellation(5.0));
+        } catch (CancelledException) {
+            return '';
+        }
     }
 
     /** @return Future<string> */
