@@ -1,0 +1,60 @@
+{
+    "name": "opencck/mercurius-mcp-gemini-api",
+    "description": "An MCP server over stdio for Google's media models by a Gemini API key: images, speech, music, video, transcription, file analysis and background research agents, on the official gemini-api CLI; built on AMPHP",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "amphp",
+        "mcp",
+        "gemini",
+        "agent"
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ext-json": "*",
+        "amphp/amp": "^3",
+        "amphp/byte-stream": "^2",
+        "amphp/file": "^3",
+        "amphp/process": "^2"
+    },
+    "require-dev": {
+        "amphp/phpunit-util": "^3",
+        "phpstan/phpstan": "^2",
+        "phpunit/phpunit": "^9.6",
+        "psalm/plugin-phpunit": "^0.22.2",
+        "vimeo/psalm": "^6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mercurius\\McpGeminiApi\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mercurius\\McpGeminiApi\\Test\\": "test/"
+        }
+    },
+    "bin": [
+        "bin/gemini-api-mcp"
+    ],
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.2.27"
+        },
+        "allow-plugins": {}
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "@php bin/fetch-binary"
+        ],
+        "test": "php -d zend.assertions=1 -d assert.exception=1 vendor/bin/phpunit",
+        "phpstan": "phpstan analyse --no-progress --memory-limit=1G",
+        "psalm": "psalm --no-progress --show-info=false",
+        "check": [
+            "@test",
+            "@phpstan",
+            "@psalm"
+        ]
+    }
+}

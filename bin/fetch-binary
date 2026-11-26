@@ -1,0 +1,66 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Runs once after `composer install`, at the build of the sandbox image or at an install into the sandbox: downloads
+// the pinned release of the official gemini-api CLI for this machine, checks its sha256 against binary.lock.json and
+// unpacks the binary into vendor/gemini-api/. Not part of the server: nothing here runs inside the event loop.
+// A machine that is not Linux, or GEMINI_API_SKIP_FETCH=1, skips the download; a failed download is a warning, and
+// the server then answers every call that the binary is missing.
+
+$root = dirname(__DIR__);
+$warn = static function (string $text): never {
+    fwrite(STDERR, 'gemini-api binary: ' . $text . "\n");
+    exit(0);
+};
+
+if (getenv('GEMINI_API_SKIP_FETCH') === '1' || PHP_OS_FAMILY !== 'Linux') {
+    $warn('not fetched (skipped on this machine)');
+}
+$lock = json_decode((string) file_get_contents($root . '/binary.lock.json'), true, 8, JSON_THROW_ON_ERROR);
+$machine = match (php_uname('m')) {
+    'x86_64', 'amd64' => 'x86_64',
+    'aarch64', 'arm64' => 'arm64',
+    default => null,
+};
+$archive = is_array($lock) && $machine !== null ? ($lock['archives'][$machine] ?? null) : null;
+if (!is_array($lock) || !is_array($archive) || !is_string($lock['version'] ?? null) || !is_string($lock['repository'] ?? null)
+    || !is_string($archive['name'] ?? null) || !is_string($archive['sha256'] ?? null)) {
+    $warn('no pinned archive for ' . php_uname('m'));
+}
+$target = $root . '/vendor/gemini-api';
+$stamp = $target . '/.version';
+if (is_file($target . '/gemini-api') && is_file($stamp) && trim((string) file_get_contents($stamp)) === $lock['version'] . ' ' . $archive['sha256']) {
+    exit(0);
+}
+
+$url = sprintf('https://github.com/%s/releases/download/%s/%s', $lock['repository'], rawurlencode($lock['version']), rawurlencode($archive['name']));
+$context = stream_context_create(['http' => ['timeout' => 120, 'follow_location' => 1, 'max_redirects' => 5, 'user_agent' => 'mercurius-mcp-gemini-api']]);
+$bytes = @file_get_contents($url, false, $context, 0, 200 * 1024 * 1024);
+if (!is_string($bytes) || $bytes === '') {
+    $warn('download failed: ' . $url);
+}
+if (!hash_equals($archive['sha256'], hash('sha256', $bytes))) {
+    // a wrong sum is not a warning: the build must not go on with a file nobody pinned
+    fwrite(STDERR, "gemini-api binary: sha256 of the downloaded archive differs from binary.lock.json\n");
+    exit(1);
+}
+$tmp = sys_get_temp_dir() . '/gemini-api-' . bin2hex(random_bytes(6));
+mkdir($tmp, 0700);
+$file = $tmp . '/' . 'archive.tar.gz';
+file_put_contents($file, $bytes);
+try {
+    (new PharData($file))->extractTo($tmp, 'gemini-api', true);
+} catch (Throwable $e) {
+    $warn('the archive holds no gemini-api: ' . $e->getMessage());
+}
+if (!is_dir($target)) {
+    mkdir($target, 0755, true);
+}
+rename($tmp . '/gemini-api', $target . '/gemini-api');
+chmod($target . '/gemini-api', 0755);
+file_put_contents($stamp, $lock['version'] . ' ' . $archive['sha256'] . "\n");
+@unlink($file);
+@rmdir($tmp);
+fwrite(STDERR, 'gemini-api binary: ' . $lock['version'] . " installed\n");

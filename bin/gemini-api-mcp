@@ -1,0 +1,20 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// An MCP server over stdio for Google's media models by a Gemini API key. Run as `php bin/gemini-api-mcp`; from the
+// environment: GEMINI_API_KEY (the key), GEMINI_API_BIN (another binary than the pinned one; several words — a
+// command with its first arguments), GEMINI_API_TIMEOUT (seconds one call of the binary may take, 100 by default).
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+use Mercurius\McpGeminiApi\Options;
+use Mercurius\McpGeminiApi\ProcessBinary;
+use Mercurius\McpGeminiApi\Server;
+
+/** @var array<string, string> $env */
+$env = getenv();
+$options = Options::from($env, dirname(__DIR__));
+(new Server(new ProcessBinary($options), $options))->serve(Amp\ByteStream\getStdin(), Amp\ByteStream\getStdout());
+exit(0);

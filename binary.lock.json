@@ -1,0 +1,14 @@
+{
+    "repository": "google-gemini/gemini-api-cli",
+    "version": "v0.5.0",
+    "archives": {
+        "x86_64": {
+            "name": "gemini-api_Linux_x86_64.tar.gz",
+            "sha256": "fce229dd482ec1caff15cd147a293513ffb5a52390394e52136f85b4a497c742"
+        },
+        "arm64": {
+            "name": "gemini-api_Linux_arm64.tar.gz",
+            "sha256": "cea63e70982a06f81069318049bfca6db49042649c5ae635b3433cb3a2420d20"
+        }
+    }
+}
