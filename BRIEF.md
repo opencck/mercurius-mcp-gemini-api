@@ -74,7 +74,10 @@ MCP-сервер по stdio: инструменты медиа и фоновых
 
 ## Что не проверено
 
-Ключа Gemini API нет: сервер проверен на подставном бинаре. Вживую предстоит проверить: вид JSON-ответов `video
+Ключа Gemini API нет: сервер проверен на подставном бинаре. 2026-11-26 в песочнице настоящий бинарь v0.5.0 с
+`--dry-run` принял все формы вызова, которые строит сервер (`image`, `music`, `video --async`, `video --resume`,
+`agent run --background`, `agent status`, `analyze` со ссылкой YouTube), и показал запросы к
+`generativelanguage.googleapis.com/v1beta/interactions`. Вживую предстоит проверить: вид JSON-ответов `video
 --async`, `agent run --background` и `agent status` (откуда берётся id и текст отчёта), код выхода `video --resume`,
 когда видео ещё не готово, и размер настоящих файлов видео против предела 20 МБ.
 
