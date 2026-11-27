@@ -37,12 +37,11 @@ final class ProcessBinary implements Binary {
             'PATH' => is_string($path) && $path !== '' ? $path : '/usr/local/bin:/usr/bin:/bin',
             'NO_COLOR' => '1',
         ];
-        // a proxy the entry was given serves the CLI too
-        foreach (['HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'SYSTEMROOT'] as $name) {
-            $value = getenv($name);
-            if (is_string($value) && $value !== '') {
-                $env[$name] = $value;
-            }
+        // the way out of the CLI is the one the server found at its start
+        $env += $this->options->proxy;
+        $root = getenv('SYSTEMROOT');
+        if (is_string($root) && $root !== '') {
+            $env['SYSTEMROOT'] = $root;
         }
         try {
             $process = Process::start([...$command, ...$args], $dir, $env);

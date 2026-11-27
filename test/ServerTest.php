@@ -9,6 +9,7 @@ use Mercurius\McpGeminiApi\BinaryFailure;
 use Mercurius\McpGeminiApi\Options;
 use Mercurius\McpGeminiApi\ProcessBinary;
 use Mercurius\McpGeminiApi\Result;
+use Mercurius\McpGeminiApi\Route;
 use Mercurius\McpGeminiApi\Server;
 
 final class ServerTest extends AsyncTestCase {
@@ -253,6 +254,33 @@ final class ServerTest extends AsyncTestCase {
         $this->expectException(BinaryFailure::class);
         $this->expectExceptionMessage('not installed');
         (new ProcessBinary(new Options('k', ['/nonexistent/gemini-api'])))->run(['image'], sys_get_temp_dir());
+    }
+
+    public function testTheWayOutIsTheDoorOfTheInstallationAProxyOrDirect(): void {
+        $open = static fn(string $proxy): bool => true;
+        $closed = static fn(string $proxy): bool => false;
+
+        self::assertSame(Route::DOOR, Route::of([], $open)['HTTPS_PROXY'] ?? null, 'the door of the installation, when it listens');
+        self::assertSame(Route::DOOR, Route::of([], $open)['HTTP_PROXY'] ?? null);
+        self::assertSame([], Route::of([], $closed), 'no door — directly');
+        self::assertSame('http://p:3128', Route::of(['HTTPS_PROXY' => 'http://p:3128'], $open)['HTTPS_PROXY'] ?? null, 'a proxy of the entry comes before the door');
+        self::assertSame('socks5h://own:1080', Route::of(['GEMINI_API_PROXY' => 'socks5h://own:1080', 'HTTPS_PROXY' => 'http://p:3128'], $closed)['HTTPS_PROXY'] ?? null);
+        self::assertSame([], Route::of(['GEMINI_API_PROXY' => 'Direct', 'HTTPS_PROXY' => 'http://p:3128'], $open), 'the word direct keeps the CLI off every proxy');
+        self::assertSame([], Route::of(['GEMINI_API_PROXY' => 'direct']), 'and nothing is tried');
+    }
+
+    public function testTheWayOutReachesTheChild(): void {
+        $dir = sys_get_temp_dir() . '/gemini-api-mcp-test-' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            $binary = new ProcessBinary(new Options('k', [PHP_BINARY, __DIR__ . '/fixtures/fake-gemini-api.php'], 20, ['HTTPS_PROXY' => Route::DOOR]));
+            $seen = json_decode($binary->run(['tts', '--stdin'], $dir, 'hi')->stdout, true, 8, JSON_THROW_ON_ERROR);
+        } finally {
+            @rmdir($dir);
+        }
+
+        self::assertIsArray($seen);
+        self::assertSame(Route::DOOR, $seen['proxy']);
     }
 
     public function testOptionsComeFromTheEnvironment(): void {

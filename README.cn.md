@@ -56,7 +56,8 @@ composer install --no-dev
 | `GEMINI_API_KEY` | Gemini API 密钥（Google AI Studio）。没有它服务器仍会启动，并在每次调用时说明缺少什么 |
 | `GEMINI_API_BIN` | 用于替代固定版本的其他二进制文件；多个词表示带有前置参数的命令 |
 | `GEMINI_API_TIMEOUT` | 二进制文件单次运行允许的秒数：默认 100，最多 900 |
-| `HTTPS_PROXY`、`HTTP_PROXY`、`NO_PROXY` | 传递给二进制文件 |
+| `GEMINI_API_PROXY` | 二进制文件的出口：代理地址（`http://`、`socks5h://`）或单词 `direct`。留空：使用条目中的代理（见下），否则在 Mercurius 安装的门 `http://vless-proxy:8080` 可连接时使用它（它通向安装的 VLESS 路由或其代理），否则直连 |
+| `HTTPS_PROXY`、`HTTP_PROXY`、`NO_PROXY` | 条目中的代理，传递给二进制文件 |
 
 在 Mercurius 中，服务器随发行包提供；密钥是代理的一个机密，以 `{GEMINI_API_KEY}` 的形式填入 `.mcp.json` 的条目。
 

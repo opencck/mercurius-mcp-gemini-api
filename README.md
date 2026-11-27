@@ -56,7 +56,8 @@ checks its sha256 and puts the binary into `vendor/gemini-api/`. On another syst
 | `GEMINI_API_KEY` | The key of the Gemini API (Google AI Studio). Without it the server starts and tells each call what is missing |
 | `GEMINI_API_BIN` | Another binary than the pinned one; several words are a command with its first arguments |
 | `GEMINI_API_TIMEOUT` | Seconds one run of the binary may take: 100 by default, 900 at most |
-| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Passed on to the binary |
+| `GEMINI_API_PROXY` | The way out of the binary: a proxy address (`http://`, `socks5h://`) or the word `direct`. Empty: a proxy of the entry (below), else the door of a Mercurius installation `http://vless-proxy:8080` when it listens (it leads to the VLESS route of the installation or to its proxy), else directly |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | A proxy of the entry, passed on to the binary |
 
 In Mercurius the server comes with the delivery; the key is a secret of the agent put into the entry of `.mcp.json`
 as `{GEMINI_API_KEY}`.

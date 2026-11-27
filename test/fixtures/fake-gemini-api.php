@@ -16,6 +16,7 @@ echo json_encode([
     'key' => getenv('GEMINI_API_KEY'),
     'home' => getenv('HOME'),
     'leak' => getenv('SERVER_ONLY_SECRET'),
+    'proxy' => getenv('HTTPS_PROXY'),
     'cwd' => getcwd(),
     'stdin' => stream_get_contents(STDIN),
 ], JSON_THROW_ON_ERROR), "\n";
