@@ -48,6 +48,15 @@ MCP-сервер по stdio: инструменты медиа и фоновых
 | `analyze` | `analyze` | только чтение | ответ на вопрос по файлам или видео YouTube |
 | `research_start` | `agent run --background --agent …` | нет — спрашивается | id запуска |
 | `research_status` | `agent status <id>` | только чтение | состояние и тексты шагов |
+| `models_list` | `models` (каталог CLI без запроса) | только чтение | модели по договору Меркурия: вид и инструмент каждой |
+
+**Модели по договору Меркурия** (2026-11-27). В ответе `initialize` сервер объявляет
+`experimental["mercurius.models"] = {"version": 1, "catalog": "models_list"}`; клиент, который ключа не знает, видит
+обычный сервер. `models_list` отдаёт каталог CLI: группа Gemini — виды `vision` и `video` через `analyze`, Gemma —
+`vision`, Image — `image`, Music — `music`, Video — `film` через `video_start` и `video_result`, Speech — `voice`
+(синтез через `speech`) или `speech` (расшифровка через `transcribe`, модели со словом `transcribe`); Robotics не
+предлагаются. `video_start` отдаёт id и структурно (`{"id"}`), `video_result` до готовности отвечает не ошибкой, а
+`{"done": false}`. Вида `chat` нет. Договор — [Провайдеры моделей от MCP](../../brief/skills-mcp.md#провайдеры-моделей-от-mcp).
 
 Каждый запуск идёт с `--agent-mode --no-interactive --output-format json`: ошибка — один JSON-документ в stderr
 (вид, сообщение, подсказки), код выхода 2 — неверные аргументы, 3 — ключ или права.

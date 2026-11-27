@@ -23,6 +23,7 @@ subscription.
 | `analyze` | Answers a question about files or a YouTube video | read-only |
 | `research_start` | Starts a background research agent (Deep Research), returns the id of the run | none: the client asks its owner |
 | `research_status` | Reads the state and the report of a run | read-only |
+| `models_list` | The models of the CLI's catalog with what each does and the tool that calls it (the contract of Mercurius) | read-only |
 
 Files go in as `files: [{name, content_base64}]` (up to 10 files and 14 MB in one call) and come back as embedded
 resources (up to 20 MB each).

@@ -24,6 +24,7 @@
 | `analyze` | 回答关于文件或 YouTube 视频的问题 | 只读 |
 | `research_start` | 启动后台研究代理（Deep Research），返回运行 id | 无：客户端询问其所有者 |
 | `research_status` | 读取运行的状态和报告 | 只读 |
+| `models_list` | CLI 目录中的模型：各自的用途及调用它的工具（Mercurius 约定） | 只读 |
 
 文件以 `files: [{name, content_base64}]` 传入（一次调用最多 10 个文件、14 MB），并以内嵌资源返回（每个最多 20 MB）。
 

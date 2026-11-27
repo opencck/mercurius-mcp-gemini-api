@@ -33,6 +33,15 @@ final class Server {
         'maxItems' => self::FILES_MAX,
         'items' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string'], 'mime_type' => ['type' => 'string'], 'content_base64' => ['type' => 'string']], 'required' => ['name', 'content_base64']],
     ];
+    public const MODELS_KEY = 'mercurius.models';
+    /** the group of the CLI's catalog → the kinds of the contract with the tool of each */
+    private const GROUPS = [
+        'Gemini' => [['vision', 'analyze'], ['video', 'analyze']],
+        'Gemma' => [['vision', 'analyze']],
+        'Image' => [['image', 'image']],
+        'Music' => [['music', 'music']],
+        'Video' => [['film', 'video_start']],
+    ];
     private const RESEARCH_AGENTS = ['deep-research-preview-04-2026', 'deep-research-max-preview-04-2026'];
 
     public function __construct(private readonly Binary $binary, private readonly Options $options) {}
@@ -57,6 +66,7 @@ final class Server {
             ['name' => 'analyze', 'description' => 'Answers a question about files (images, audio, video, PDF, text) or a YouTube video.', 'inputSchema' => $object(['question' => $prompt, 'files' => self::FILES, 'youtube_url' => ['type' => 'string', 'maxLength' => 200], 'model' => self::MODEL], []), 'annotations' => ['readOnlyHint' => true]],
             ['name' => 'research_start', 'description' => 'Starts a background research agent of Google (Deep Research) on a question and returns the id of the run; research_status reads its state and report. A long and expensive run, paid by the Gemini API key.', 'inputSchema' => $object(['input' => $prompt, 'agent' => ['type' => 'string', 'enum' => self::RESEARCH_AGENTS]], ['input'])],
             ['name' => 'research_status', 'description' => 'Reads the state of a run started by research_start and, when it is done, its report.', 'inputSchema' => $object(['id' => $id], ['id']), 'annotations' => ['readOnlyHint' => true]],
+            ['name' => 'models_list', 'description' => 'The models of the CLI\'s catalog (offline) with what each does and the tool that calls it.', 'inputSchema' => $object([], []), 'annotations' => ['readOnlyHint' => true]],
         ];
     }
 
@@ -99,7 +109,9 @@ final class Server {
         $params = $message['params'] ?? null;
         $params = is_array($params) ? $params : [];
         $result = match ($message['method']) {
-            'initialize' => ['protocolVersion' => self::PROTOCOL, 'capabilities' => ['tools' => new \stdClass()], 'serverInfo' => ['name' => 'mercurius-mcp-gemini-api', 'version' => '1.0.0']],
+            // the models of the server are offered by the contract of Mercurius, in the place the protocol keeps for
+            // additions: a client that does not know the key sees the tools only
+            'initialize' => ['protocolVersion' => self::PROTOCOL, 'capabilities' => ['tools' => new \stdClass(), 'experimental' => [self::MODELS_KEY => ['version' => 1, 'catalog' => 'models_list']]], 'serverInfo' => ['name' => 'mercurius-mcp-gemini-api', 'version' => '1.0.0']],
             'tools/list' => ['tools' => self::tools()],
             'tools/call' => $this->call($params),
             'ping' => new \stdClass(),
@@ -112,7 +124,7 @@ final class Server {
 
     /**
      * @param array<array-key, mixed> $params
-     * @return array{content: list<array<string, mixed>>, isError: bool}
+     * @return array{content: list<array<string, mixed>>, isError: bool, structuredContent?: array<string, mixed>}
      */
     private function call(array $params): array {
         if (!$this->options->configured()) {
@@ -131,11 +143,12 @@ final class Server {
                     'speech' => $this->made($dir, ['tts', '--stdin', ...$args->flags(['voice' => '--voice', 'style' => '--style', 'language' => '--language', 'model' => '--model'])], $args->text('text', self::PROMPT_MAX)),
                     'music' => $this->made($dir, ['music', ...$args->flags(['model' => '--model']), '--', $args->text('prompt', self::PROMPT_MAX)]),
                     'video_start' => $this->started($dir, ['video', '--async', ...$args->flags(['aspect_ratio' => '--aspect-ratio', 'resolution' => '--resolution', 'model' => '--model']), '--', $args->text('prompt', self::PROMPT_MAX)], 'video_result'),
-                    'video_result' => $this->made($dir, ['video', '--resume', $args->id('id'), '--poll-timeout', min(60, max(5, $this->options->timeout - 20)) . 's']),
+                    'video_result' => $this->pending($this->made($dir, ['video', '--resume', $args->id('id'), '--poll-timeout', min(60, max(5, $this->options->timeout - 20)) . 's'])),
                     'transcribe' => $this->transcribed($dir, $args),
                     'analyze' => $this->analyzed($dir, $args),
                     'research_start' => $this->started($dir, ['agent', 'run', '--background', '--agent', $args->oneOf('agent', self::RESEARCH_AGENTS), '--', $args->text('input', self::PROMPT_MAX)], 'research_status'),
                     'research_status' => $this->status($dir, $args->id('id')),
+                    'models_list' => $this->catalog($dir),
                     default => self::answer('Unknown tool', true),
                 };
             } finally {
@@ -181,7 +194,7 @@ final class Server {
      * A command that starts a long operation and answers with its id.
      *
      * @param list<string> $command
-     * @return array{content: list<array<string, mixed>>, isError: bool}
+     * @return array{content: list<array<string, mixed>>, isError: bool, structuredContent?: array<string, string>}
      */
     private function started(string $dir, array $command, string $next): array {
         $result = $this->run($dir, $command);
@@ -194,7 +207,80 @@ final class Server {
             return self::answer('Started, but the answer names no id: ' . self::cut(trim($result->stdout), 2000), true);
         }
         $status = self::str($document, 'status') ?? 'started';
-        return self::answer(sprintf("id: %s\nstatus: %s\nRead the result later with %s.", basename($id), $status, $next), false);
+        // the id comes apart as well: a client reads the field rather than the text
+        return self::answer(sprintf("id: %s\nstatus: %s\nRead the result later with %s.", basename($id), $status, $next), false) + ['structuredContent' => ['id' => basename($id), 'status' => $status]];
+    }
+
+    /**
+     * The result of a video read before it is ready is no error: it says so, and a client asks again.
+     *
+     * @param array{content: list<array<string, mixed>>, isError: bool} $answer
+     * @return array{content: list<array<string, mixed>>, isError: bool, structuredContent?: array<string, bool>}
+     */
+    private function pending(array $answer): array {
+        // an answer with a file, or one that says why a file is not returned, is the answer
+        if (!$answer['isError']) {
+            return $answer;
+        }
+        $text = '';
+        foreach ($answer['content'] as $part) {
+            /** @var mixed $said */
+            $said = $part['text'] ?? null;
+            $text .= is_string($said) ? $said : '';
+        }
+        // a failure of the CLI that is not a wait stays a failure
+        if (preg_match('~not (yet )?(ready|done|complete)|pending|running|in.progress|poll|timed? ?out|without a file~i', $text) !== 1) {
+            return $answer;
+        }
+        return ['content' => [['type' => 'text', 'text' => 'The video is not ready yet: read the result again later.']], 'isError' => false, 'structuredContent' => ['done' => false]];
+    }
+
+    /**
+     * The models of the CLI's catalog (offline, no request) by the contract of Mercurius: each with its kind and the
+     * tool that calls it. A model of speech is a voice when it makes speech, a transcription when it reads it.
+     *
+     * @return array{content: list<array<string, mixed>>, isError: bool, structuredContent?: array<string, mixed>}
+     */
+    private function catalog(string $dir): array {
+        $result = $this->run($dir, ['models']);
+        if ($result->exit !== 0) {
+            return self::answer(self::failure($result), true);
+        }
+        /** @var mixed $decoded */
+        $decoded = json_decode(trim($result->stdout), true, 64);
+        /** @var mixed $rows */
+        $rows = is_array($decoded) && array_is_list($decoded) ? $decoded : (is_array($decoded) ? ($decoded['data'] ?? $decoded['items'] ?? $decoded['results'] ?? []) : []);
+        $models = [];
+        /** @var mixed $row */
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $id = self::str($row, 'value');
+            $group = self::str($row, 'group');
+            if ($id === null || $group === null) {
+                continue;
+            }
+            $kinds = self::GROUPS[$group] ?? ($group === 'Speech' ? [str_contains($id, 'transcribe') ? ['speech', 'transcribe'] : ['voice', 'speech']] : []);
+            /** @var mixed $listed */
+            $listed = $row['default_for'] ?? null;
+            $defaultFor = is_array($listed) ? $listed : [];
+            foreach ($kinds as [$kind, $tool]) {
+                $model = ['id' => $id, 'kind' => $kind, 'tool' => $tool, 'title' => mb_substr(self::str($row, 'description') ?? $id, 0, 120),
+                    'input' => match ($kind) {
+                        'vision' => ['text', 'image', 'file'],
+                        'video' => ['text', 'video'],
+                        'speech' => ['audio', 'video'],
+                        default => ['text'],
+                    },
+                    'default' => ($row['default'] ?? false) === true || in_array($kind === 'film' ? 'video' : $kind, $defaultFor, true)];
+                if ($kind === 'film') {
+                    $model['result_tool'] = 'video_result';
+                }
+                $models[] = $model;
+            }
+        }
+        return ['content' => [['type' => 'text', 'text' => sprintf('%d models', count($models))]], 'isError' => false, 'structuredContent' => ['models' => $models]];
     }
 
     /** @return array{content: list<array<string, mixed>>, isError: bool} */

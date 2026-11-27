@@ -71,6 +71,7 @@ final class ServerTest extends AsyncTestCase {
         self::assertSame([
             'image' => 'write', 'speech' => 'write', 'music' => 'asked', 'video_start' => 'asked', 'video_result' => 'read',
             'transcribe' => 'read', 'analyze' => 'read', 'research_start' => 'asked', 'research_status' => 'read',
+            'models_list' => 'read',
         ], $hints, 'music, video and a research agent are asked for: the owner decided so');
     }
 
@@ -109,6 +110,44 @@ final class ServerTest extends AsyncTestCase {
             self::assertTrue($result['isError'], $tool);
         }
         self::assertSame([], $binary->runs);
+    }
+
+    public function testTheServerOffersItsModelsByTheContractOfMercurius(): void {
+        [$server, $binary] = self::server(new Result(0, json_encode([
+            ['value' => 'gemini-4-hydrogen', 'description' => 'Hydrogen', 'default' => true, 'group' => 'Gemini'],
+            ['value' => 'gemini-nano-banana-2.1', 'description' => 'Banana', 'default' => false, 'default_for' => ['image'], 'group' => 'Image'],
+            ['value' => 'gemini-3.8-flash-tts', 'description' => 'TTS', 'default' => false, 'group' => 'Speech'],
+            ['value' => 'gemini-3.5-transcribe', 'description' => 'Transcribe', 'default' => false, 'group' => 'Speech'],
+            ['value' => 'gemini-omni-1.2-flash', 'description' => 'Omni', 'default' => false, 'default_for' => ['video'], 'group' => 'Video'],
+            ['value' => 'gemini-robotics-er-2-preview', 'description' => 'Robot', 'default' => false, 'group' => 'Robotics'],
+        ], JSON_THROW_ON_ERROR), ''));
+
+        $hello = $server->handle('{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}');
+        $catalog = self::call($server, 'models_list', []);
+
+        $helloJson = json_encode($hello, JSON_THROW_ON_ERROR);
+        self::assertStringContainsString('"experimental":{"mercurius.models":{"version":1,"catalog":"models_list"}}', $helloJson, 'the declaration in the place the protocol keeps for additions');
+        self::assertStringContainsString('"capabilities":{"tools":{}', $helloJson, 'and an ordinary server for a client that does not know it');
+        self::assertSame([...self::GLOBAL, 'models'], $binary->runs[0]);
+        $json = json_encode($catalog['structuredContent'] ?? null, JSON_THROW_ON_ERROR);
+        preg_match_all('~"id":"([^"]+)","kind":"([^"]+)","tool":"([^"]+)"~', $json, $found, PREG_SET_ORDER);
+        self::assertSame([
+            'gemini-4-hydrogen vision analyze', 'gemini-4-hydrogen video analyze', 'gemini-nano-banana-2.1 image image',
+            'gemini-3.8-flash-tts voice speech', 'gemini-3.5-transcribe speech transcribe', 'gemini-omni-1.2-flash film video_start',
+        ], array_map(static fn(array $m): string => $m[1] . ' ' . $m[2] . ' ' . $m[3], $found), 'a model of speech is a voice or a transcription; robotics are not offered');
+        self::assertStringContainsString('"result_tool":"video_result"', $json);
+        self::assertMatchesRegularExpression('~"id":"gemini-nano-banana-2\.1"[^}]*"default":true~', $json, 'the default of its kind');
+    }
+
+    public function testAVideoThatIsNotReadyIsNoError(): void {
+        [$server] = self::server(new Result(0, '{"status":"in_progress"}', ''));
+
+        $result = self::call($server, 'video_result', ['id' => 'v1_Chd-abc_123']);
+
+        self::assertFalse($result['isError']);
+        self::assertSame(['done' => false], $result['structuredContent'] ?? null);
+        [$server] = self::server(new Result(0, '{"id":"v1_x","status":"in_progress"}', ''));
+        self::assertStringContainsString('"id":"v1_x"', json_encode(self::call($server, 'video_start', ['prompt' => 'a cat'])['structuredContent'] ?? null, JSON_THROW_ON_ERROR), 'the id comes apart for a client');
     }
 
     public function testAVideoIsStartedAndFetchedLater(): void {
@@ -204,7 +243,7 @@ final class ServerTest extends AsyncTestCase {
         $list = $server->handle('{"jsonrpc":"2.0","id":1,"method":"tools/list"}');
         self::assertIsArray($list);
         self::assertIsArray($list['result']);
-        self::assertCount(9, (array) $list['result']['tools'], 'the trial start of an install lists the tools without a key');
+        self::assertCount(10, (array) $list['result']['tools'], 'the trial start of an install lists the tools without a key');
     }
 
     public function testTheProcessGetsTheKeyAHomeOfItsOwnAndNothingElse(): void {
